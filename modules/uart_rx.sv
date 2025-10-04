@@ -14,11 +14,14 @@ module uart_rx #(
     input  logic        clk_50mhz,     // System clock
     input  logic        rst_n,         // Asynchronous active-low reset
     input  logic        rx_in,         // Serial data input
+    input  logic         fifo_read,      // Señal de lectura (Read Enable)
 
     output logic [7:0]  rx_data,       // Received byte output
     output logic        rx_valid,      // Indicates a valid byte is available
     output logic        eos_flag,      // End-of-string flag (active high for one clock cycle)
-    output logic        buffer_full    // Indicates RX buffer is full
+    output logic        buffer_full,    // Indicates RX buffer is full
+    output logic [7:0]   fifo_data,      // Datos leídos de la FIFO
+    output logic         fifo_empty      // Bandera de vacío
 );
 
     // Baud rate generation
@@ -93,7 +96,7 @@ module uart_rx #(
             current_state <= next_state;
             rx_valid_reg  <= 1'b0; // Default to not valid for this clock cycle
 
-            unique case (current_state)
+            case (current_state)
                 IDLE: begin
                     if (!rx_in_d2) begin // Detect falling edge for start bit
                         baud_tick_counter <= '0;
@@ -191,13 +194,26 @@ module uart_rx #(
             if (rx_valid_reg && !buffer_full_reg) begin
                 rx_buffer[head_ptr] <= rx_data_reg;
                 head_ptr <= head_ptr + 1;
+            end
+
+            // Cuando el Parser pide datos
+            if (fifo_read && (buffer_count > 0)) begin
+                tail_ptr <= tail_ptr + 1;
+            end
+
+            // Incrementa si escribe y no lee
+            if ((rx_valid_reg && !buffer_full_reg) && !(fifo_read && buffer_count > 0)) begin
                 buffer_count <= buffer_count + 1;
+            end
+            // Decrementa si lee y no escribe
+            else if (!(rx_valid_reg && !buffer_full_reg) && (fifo_read && buffer_count > 0)) begin
+                buffer_count <= buffer_count - 1;
             end
 
             // Reset buffer pointer on End-of-String flag
-            if (eos_flag_reg) begin
-                head_ptr <= '0;
-                tail_ptr <= '0;
+            if (eos_flag_reg) begin // Ojo: Si ya cambiaste a eos_latch, usa eos_latch
+                head_ptr     <= '0;
+                tail_ptr     <= '0;
                 buffer_count <= '0;
             end
 
@@ -210,5 +226,8 @@ module uart_rx #(
     assign rx_valid = rx_valid_reg;
     assign eos_flag = eos_flag_reg;
     assign buffer_full = buffer_full_reg;
+
+    assign fifo_data = rx_buffer[tail_ptr];
+    assign fifo_empty = (buffer_count == 0);
 
 endmodule

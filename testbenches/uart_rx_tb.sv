@@ -17,6 +17,9 @@ module uart_rx_tb;
     logic        rx_valid;
     logic        eos_flag;
     logic        buffer_full;
+    logic        fifo_read;
+    logic [7:0]  fifo_data;
+    logic        fifo_empty;
 
     // Instantiate DUT
     uart_rx #(

@@ -25,6 +25,9 @@ module uart_rx_timing;
     logic        rx_valid;
     logic        eos_flag;
     logic        buffer_full;
+    logic        fifo_read;
+    logic [7:0]  fifo_data;
+    logic        fifo_empty;
 
     // Internal Signals (for verification purposes only - Requires probing/dumping VCD)
     // We rely on the VCD dump to verify internal state variables like 'current_state' and 'baud_tick'

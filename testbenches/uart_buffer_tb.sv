@@ -26,6 +26,13 @@ module tb_uart_buffer;
     logic        rx_valid;
     logic        eos_flag;
     logic        buffer_full;
+    logic        fifo_read;
+    logic        empty;
+
+    // Valor esperado del primer byte (el más antiguo)
+    reg [7:0] expected_data = 8'h10;
+    reg [7:0] actual_data;
+    integer errors = 0;
 
     // Instantiate the DUT
     uart_rx #(
@@ -40,7 +47,9 @@ module tb_uart_buffer;
         .rx_data(rx_data),
         .rx_valid(rx_valid),
         .eos_flag(eos_flag),
-        .buffer_full(buffer_full)
+        .buffer_full(buffer_full),
+        .fifo_read(fifo_read),
+        .fifo_empty(fifo_empty)
     );
 
     // Clock generation
@@ -79,6 +88,7 @@ module tb_uart_buffer;
         // Initialize signals
         rst_n = 1'b0;
         rx_in = 1'b1; // Idle high
+        fifo_read = 1'b0;
 
         #(CLK_PERIOD * 10) rst_n = 1'b1; // De-assert reset
         $display("Reset de-asserted");
@@ -114,11 +124,42 @@ module tb_uart_buffer;
         end else begin
             $error("FAIL: Buffer was not full after attempting to send extra byte. buffer_full=%b", buffer_full);
         end
-        // A more robust check would involve reading from the buffer and verifying the content.
+
+        // -----------------------------------------------------------------
+        // Test Case 3: Read and Validate FIFO content
+        // -----------------------------------------------------------------
+        $display("\nTest Case 3: Reading and validating data from the FIFO.");
+
+        // Bucle para leer y validar RX_BUFFER_DEPTH bytes
+        for (integer k = 0; k < RX_BUFFER_DEPTH; k = k + 1) begin
+            // 1. Verificación Inicial
+            if (fifo_empty) begin
+                $error("FAIL: fifo_empty asserted prematurely at iteration %0d.", k);
+            end
+            // 2. Leer dato (dato actual está en fifo_data, lo leemos un ciclo antes de activar fifo_read)
+            actual_data = dut.fifo_data; // Lee el dato del bus de salida de la FIFO
+            if (actual_data == expected_data) begin
+                $display("Read %0d/%0d: PASS. Expected %h, Got %h.",
+                         k + 1, RX_BUFFER_DEPTH, expected_data, actual_data);
+            end else begin
+                $error("Read %0d/%0d: FAIL. Expected %h, Got %h.",
+                       k + 1, RX_BUFFER_DEPTH, expected_data, actual_data);
+                errors = errors + 1;
+            end
+            // 3. Activar señal de Lectura (fifo_read)
+            // Esto incrementará tail_ptr en el siguiente flanco de reloj,
+            // trayendo el siguiente byte a fifo_data.
+            fifo_read = 1'b1;
+            #(CLK_PERIOD);
+            fifo_read = 1'b0; // Desactivar para el próximo ciclo
+
+            // 4. Preparar para la siguiente iteración
+            expected_data = expected_data + 1;
+        end
 
         #(CLK_PERIOD * 5); // Wait
         // Test Case 3: Send an End-of-String character to reset the buffer
-        $display("\nTest Case 3: Sending CR (0x0D) to reset buffer.");
+        $display("\nTest Case 4: Sending CR (0x0D) to reset buffer.");
         send_byte(8'h0D); // CR
         #(CLK_PERIOD * 5); // Wait for processing
 
@@ -135,7 +176,7 @@ module tb_uart_buffer;
         end
 
         // Test Case 4: Send data after buffer reset
-        $display("\nTest Case 4: Sending data after buffer reset.");
+        $display("\nTest Case 5: Sending data after buffer reset.");
         send_byte(8'hAA);
 
         if (rx_data == 8'hAA) begin
