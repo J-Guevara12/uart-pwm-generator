@@ -92,9 +92,8 @@ module uart_rx #(
         end else begin
             current_state <= next_state;
             rx_valid_reg  <= 1'b0; // Default to not valid for this clock cycle
-            eos_flag_reg  <= 1'b0; // Default to not EOS for this clock cycle
 
-            case (current_state)
+            unique case (current_state)
                 IDLE: begin
                     if (!rx_in_d2) begin // Detect falling edge for start bit
                         baud_tick_counter <= '0;
@@ -153,6 +152,7 @@ module uart_rx #(
                 end
             end
             START_BIT: begin
+                eos_flag_reg  <= 1'b0;
                 // Transition to DATA_BITS after one full start bit period
                 if (baud_tick_counter == BAUD_TICK_DIVIDER - 1) begin 
                     // Check for framing error if start bit was not low
